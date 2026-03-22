@@ -52,6 +52,9 @@ enum Commands {
         /// Description for the generated flake
         #[arg(short, long, default_value = "Managed workspace")]
         description: String,
+        /// Skip git init and .gitignore management
+        #[arg(long, default_value_t = false)]
+        no_git: bool,
     },
     /// Show what would change without writing
     Diff {
@@ -119,10 +122,11 @@ fn main() -> Result<(), Error> {
             target,
             fragments,
             description,
+            no_git,
         } => {
             let spec = build_spec(&description, &fragments)?;
             let target_path = sync::resolve_target(&target);
-            match sync::sync(&spec, &target_path)? {
+            match sync::sync(&spec, &target_path, no_git)? {
                 sync::SyncAction::Created => {
                     eprintln!(
                         "[nix-place] Created {}/flake.nix ({} apps, {} flows)",

@@ -21,7 +21,7 @@ pub enum SyncAction {
 /// - Writes atomically (temp file + rename)
 /// - Initializes git if needed
 /// - Manages `.gitignore`
-pub fn sync(spec: &FlakeSpec, target: &Path) -> Result<SyncAction, crate::Error> {
+pub fn sync(spec: &FlakeSpec, target: &Path, no_git: bool) -> Result<SyncAction, crate::Error> {
     let content = render::render(spec);
 
     // Validate generated Nix before writing
@@ -44,16 +44,20 @@ pub fn sync(spec: &FlakeSpec, target: &Path) -> Result<SyncAction, crate::Error>
         // Find which apps changed
         let changed_apps = diff_apps(&existing, &content);
         write_atomic(&flake_path, &content)?;
-        ensure_git(target)?;
-        ensure_gitignore(target)?;
+        if !no_git {
+            ensure_git(target)?;
+            ensure_gitignore(target)?;
+        }
         return Ok(SyncAction::Updated { changed_apps });
     }
 
     // First write
     fs::create_dir_all(target)?;
     write_atomic(&flake_path, &content)?;
-    ensure_git(target)?;
-    ensure_gitignore(target)?;
+    if !no_git {
+        ensure_git(target)?;
+        ensure_gitignore(target)?;
+    }
     Ok(SyncAction::Created)
 }
 
