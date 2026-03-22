@@ -1,0 +1,87 @@
+id: pleme-gems
+priority: 100
+
+inputs:
+  nixpkgs:
+    url: "github:NixOS/nixpkgs/nixos-25.11"
+  flake-utils:
+    url: "github:numtide/flake-utils"
+
+apps:
+  gem-build-all:
+    description: "Build all pangea gems"
+    script: |
+      echo "Building all pangea gems..."
+      cd ${ws}
+      for gem in pangea-core pangea-aws pangea-akeyless pangea-azure pangea-cloudflare pangea-datadog pangea-gcp pangea-hcloud pangea-splunk pangea-kubernetes; do
+        if [ -d "$gem" ] && [ -f "$gem/$gem.gemspec" ]; then
+          echo "==> Building $gem"
+          cd ${ws}/$gem && ${pkgs.ruby}/bin/gem build $gem.gemspec
+        fi
+      done
+      echo "All gems built."
+
+  gem-publish-all:
+    description: "Publish all pangea gems in dependency order"
+    script: |
+      echo "Publishing all pangea gems..."
+      cd ${ws}
+      echo "==> pangea-core (root dependency)"
+      cd ${ws}/pangea-core && ${pkgs.ruby}/bin/gem build pangea-core.gemspec && ${pkgs.ruby}/bin/gem push pangea-core-*.gem
+      for gem in pangea-aws pangea-akeyless pangea-azure pangea-cloudflare pangea-datadog pangea-gcp pangea-hcloud pangea-splunk pangea-kubernetes; do
+        if [ -d "${ws}/$gem" ] && [ -f "${ws}/$gem/$gem.gemspec" ]; then
+          echo "==> $gem"
+          cd ${ws}/$gem && ${pkgs.ruby}/bin/gem build $gem.gemspec && ${pkgs.ruby}/bin/gem push $gem-*.gem
+        fi
+      done
+      echo "All gems published."
+
+  gem-status:
+    description: "Show gem publish status"
+    script: |
+      echo "Gem publish status:"
+      echo "--------------------------------------------"
+      for gem in pangea-core pangea-aws pangea-akeyless pangea-azure pangea-cloudflare pangea-datadog pangea-gcp pangea-hcloud pangea-splunk pangea-kubernetes; do
+        if [ -d "${ws}/$gem" ]; then
+          local_ver=$(${pkgs.ruby}/bin/ruby -e "Dir.glob('${ws}/' + '$gem' + '/lib/*/version.rb').each{|f| c=File.read(f); puts \$1 if c=~/VERSION.*?['\"]([^'\"]+)/}" 2>/dev/null)
+          published=$(${pkgs.ruby}/bin/gem search -r "^$gem$" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -o '([^)]*)' | tr -d '()' || echo "NOT_PUBLISHED")
+          printf "  %-22s local=%-8s published=%s\n" "$gem" "${local_ver:-?}" "$published"
+        fi
+      done
+
+  gem-bump:
+    description: "Bump a gem version"
+    script: |
+      gem_name="${1:-}"
+      new_version="${2:-}"
+      [ -z "$gem_name" ] || [ -z "$new_version" ] && { echo "Usage: nix run .#gem-bump -- <gem> <version>"; exit 1; }
+      cd ${ws}/$gem_name
+      version_file=$(find lib -name "version.rb" | head -1)
+      ${pkgs.gnused}/bin/sed -i "s/VERSION = .*/VERSION = %($new_version).freeze/" "$version_file"
+      ${pkgs.git}/bin/git add "$version_file"
+      ${pkgs.git}/bin/git commit -m "Bump version to $new_version"
+      echo "$gem_name bumped to $new_version"
+
+flows:
+  gem-publish-all:
+    description: "Publish all pangea gems (DAG order)"
+    steps:
+      - id: pangea-core
+        action:
+          type: shell
+          command: "cd pangea-core && gem build pangea-core.gemspec && gem push pangea-core-*.gem"
+      - id: pangea-aws
+        action:
+          type: shell
+          command: "cd pangea-aws && gem build pangea-aws.gemspec && gem push pangea-aws-*.gem"
+        depends_on: [pangea-core]
+      - id: pangea-akeyless
+        action:
+          type: shell
+          command: "cd pangea-akeyless && gem build pangea-akeyless.gemspec && gem push pangea-akeyless-*.gem"
+        depends_on: [pangea-core]
+      - id: pangea-kubernetes
+        action:
+          type: shell
+          command: "cd pangea-kubernetes && gem build pangea-kubernetes.gemspec && gem push pangea-kubernetes-*.gem"
+        depends_on: [pangea-core]

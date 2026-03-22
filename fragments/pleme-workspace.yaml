@@ -1,0 +1,88 @@
+id: pleme-workspace
+priority: 50
+
+inputs:
+  nixpkgs:
+    url: "github:NixOS/nixpkgs/nixos-25.11"
+  flake-utils:
+    url: "github:numtide/flake-utils"
+  fleet:
+    url: "github:pleme-io/fleet"
+    follows:
+      nixpkgs: nixpkgs
+
+apps:
+  git-status:
+    description: "Git status across all repos"
+    script: |
+      echo "Git status:"
+      echo "--------------------------------------------"
+      cd ${ws}
+      for dir in */; do
+        repo="${dir%/}"
+        if [ -d "$repo/.git" ]; then
+          status=$(${pkgs.git}/bin/git -C "$repo" status --short 2>/dev/null)
+          branch=$(${pkgs.git}/bin/git -C "$repo" branch --show-current 2>/dev/null)
+          if [ -z "$status" ]; then
+            printf "  %-30s %-10s clean\n" "$repo" "$branch"
+          else
+            lines=$(echo "$status" | wc -l | tr -d ' ')
+            printf "  %-30s %-10s %s changed\n" "$repo" "$branch" "$lines"
+          fi
+        fi
+      done
+
+  flake-update-all:
+    description: "Update all repo flake.locks"
+    script: |
+      echo "Updating flake.locks..."
+      cd ${ws}
+      for dir in */; do
+        repo="${dir%/}"
+        if [ -d "$repo" ] && [ -f "$repo/flake.nix" ]; then
+          echo "==> $repo"
+          cd ${ws}/$repo && ${pkgs.nix}/bin/nix flake update 2>&1 | tail -1
+        fi
+      done
+      echo "Done."
+
+  flake-update-commit-push:
+    description: "Update, commit, push all flake.locks"
+    script: |
+      echo "Updating, committing, pushing flake.locks..."
+      cd ${ws}
+      for dir in */; do
+        repo="${dir%/}"
+        if [ -d "$repo" ] && [ -f "$repo/flake.nix" ]; then
+          cd ${ws}/$repo
+          ${pkgs.nix}/bin/nix flake update 2>/dev/null
+          changed=$(${pkgs.git}/bin/git status --short flake.lock 2>/dev/null)
+          if [ -n "$changed" ]; then
+            echo "==> $repo"
+            ${pkgs.git}/bin/git add flake.lock
+            ${pkgs.git}/bin/git commit -m "Update flake.lock" 2>/dev/null
+            ${pkgs.git}/bin/git push origin main 2>/dev/null
+          fi
+        fi
+      done
+      echo "Done."
+
+  test-all:
+    description: "Run tests across all repos"
+    script: |
+      echo "Running tests..."
+      cd ${ws}
+      failed=0
+      for repo in pangea-architectures pangea-core pangea-aws; do
+        if [ -d "$repo" ] && [ -f "$repo/flake.nix" ]; then
+          echo "==> $repo"
+          cd ${ws}/$repo && ${pkgs.nix}/bin/nix run .#test 2>/dev/null && echo "    passed" || { echo "    FAILED"; failed=$((failed + 1)); }
+        fi
+      done
+      for repo in inspec-akeyless inspec-aws-k3s inspec-k3s-cis inspec-nixos-baseline; do
+        if [ -d "$repo" ]; then
+          echo "==> $repo"
+          cd ${ws}/$repo && ${pkgs.ruby}/bin/ruby -Itest/unit -e "Dir.glob('test/unit/*_test.rb').each{|f| require File.expand_path(f)}" 2>/dev/null && echo "    passed" || { echo "    FAILED"; failed=$((failed + 1)); }
+        fi
+      done
+      [ $failed -eq 0 ] && echo "All passed." || { echo "$failed FAILED."; exit 1; }
