@@ -51,7 +51,8 @@ pub struct FlowDef {
 pub struct FlakeFragment {
     /// Unique identifier for this fragment (e.g. "pleme-gems", "pleme-tests").
     pub id: String,
-    /// Priority for merge conflicts (higher wins). Default: 100.
+    /// Priority for merge conflicts (higher wins). Default: 50.
+    /// Convention: 50 = base workspace, 100+ = specialized overrides.
     #[serde(default = "default_priority")]
     pub priority: u32,
     /// Flake inputs contributed by this fragment.
@@ -69,7 +70,7 @@ pub struct FlakeFragment {
 }
 
 fn default_priority() -> u32 {
-    100
+    50
 }
 
 /// The complete flake specification — result of merging all fragments.

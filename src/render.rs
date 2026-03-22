@@ -151,36 +151,31 @@ fn render_app(out: &mut String, name: &str, app: &AppDef) {
 /// Nix interpolations like `${pkgs.ruby}`, `${ws}`, `${fleetBin}` are kept as-is.
 /// Bash constructs like `${dir%/}`, `${1:-}`, `${var}` become `''${...}`.
 fn escape_nix_interpolation(line: &str) -> String {
-    // Known Nix variables that should NOT be escaped
+    // Known Nix variables that should NOT be escaped.
+    // Maintenance: add entries here when new `let` bindings are added to the
+    // rendered flake template (see `render()` above).
     const NIX_VARS: &[&str] = &[
         "${pkgs.", "${ws}", "${fleetBin}", "${fleetYaml}",
         "${system}", "${self.", "${lib.", "${env}",
     ];
 
     let mut result = String::with_capacity(line.len() + 16);
-    let chars: Vec<char> = line.chars().collect();
-    let len = chars.len();
-    let mut i = 0;
+    let mut chars = line.char_indices().peekable();
 
-    while i < len {
-        if i + 1 < len && chars[i] == '$' && chars[i + 1] == '{' {
-            // Check if this matches a known Nix variable
-            let rest = &line[i..];
-            let is_nix = NIX_VARS.iter().any(|v| rest.starts_with(v));
-
-            if is_nix {
-                result.push('$');
-                result.push('{');
-                i += 2;
-            } else {
-                // Escape for Nix: ${ → ''${
-                result.push_str("''${");
-                i += 2;
+    while let Some((byte_pos, ch)) = chars.next() {
+        if ch == '$' {
+            if let Some(&(_, '{')) = chars.peek() {
+                chars.next(); // consume '{'
+                let rest = &line[byte_pos..];
+                if NIX_VARS.iter().any(|v| rest.starts_with(v)) {
+                    result.push_str("${");
+                } else {
+                    result.push_str("''${");
+                }
+                continue;
             }
-        } else {
-            result.push(chars[i]);
-            i += 1;
         }
+        result.push(ch);
     }
 
     result
