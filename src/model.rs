@@ -87,19 +87,28 @@ pub struct FlakeSpec {
 }
 
 impl FlakeSpec {
+    /// Default systems used when no fragment declares any.
+    const DEFAULT_SYSTEMS: &[&str] = &["aarch64-darwin", "x86_64-linux", "aarch64-linux"];
+
     /// Create an empty spec with defaults.
+    /// Systems start empty — populated from fragments or DEFAULT_SYSTEMS during render.
     pub fn new(description: &str) -> Self {
         Self {
             description: description.to_string(),
             inputs: IndexMap::new(),
             apps: IndexMap::new(),
             flows: IndexMap::new(),
-            systems: vec![
-                "aarch64-darwin".to_string(),
-                "x86_64-linux".to_string(),
-                "aarch64-linux".to_string(),
-            ],
+            systems: Vec::new(),
             provenance: IndexMap::new(),
+        }
+    }
+
+    /// Returns the systems list, falling back to DEFAULT_SYSTEMS if none declared.
+    pub fn effective_systems(&self) -> Vec<String> {
+        if self.systems.is_empty() {
+            Self::DEFAULT_SYSTEMS.iter().map(|s| (*s).to_string()).collect()
+        } else {
+            self.systems.clone()
         }
     }
 

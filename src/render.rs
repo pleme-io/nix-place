@@ -26,7 +26,7 @@ pub fn render(spec: &FlakeSpec) -> String {
     out.push_str(", ... }:\n");
 
     let systems_str: Vec<String> = spec
-        .systems
+        .effective_systems()
         .iter()
         .map(|s| format!("\"{s}\""))
         .collect();
